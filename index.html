@@ -1,51 +1,116 @@
 <script type="module">
-    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
-
-    // TWÓJ KLUCZ API
+    // TWOJE NOWE DANE
     const API_KEY = "AIzaSyDBSuJPySlhNMp6hIeqU0MP5vu_z_M6DvM"; 
-
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    
-    // ZMIANA: Używamy pełnej nazwy modelu i sprawdzamy połączenie
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-    });
 
     let chats = JSON.parse(localStorage.getItem('straw_chats')) || [];
     let currentChatId = null;
 
-    // Funkcja wysyłania - ulepszona
+    // Funkcja wysyłania - metoda bezpośrednia i pancerna
     async function sendMessage() {
         const input = document.getElementById('userInput');
         const text = input.value.trim();
         if (!text) return;
-        if (!currentChatId) createNewChat();
+        
+        // Jeśli nie ma czatu, stwórz go
+        if (!currentChatId) {
+            createNewChat();
+        }
 
         const chat = chats.find(c => c.id === currentChatId);
         if (chat.messages.length === 0) chat.title = text.substring(0, 25) + "...";
 
+        // Dodaj wiadomość użytkownika do pamięci i ekranu
         chat.messages.push({ role: 'user', text });
         input.value = '';
-        loadChat(currentChatId);
+        renderCurrentMessages();
+
+        // Bezpośredni link do Google
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
         try {
-            // Dodajemy systemInstruction bezpośrednio do zapytania, co jest pewniejsze
-            const prompt = "Jesteś StrawAI, ekspertem Linux CachyOS dla mojego taty. Odpowiadaj po polsku. Pytanie: " + text;
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const aiText = response.text();
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: "Jesteś StrawAI, ai do codziennego użytku. Odpowiadaj po polsku. Pytanie: " + text }]
+                    }]
+                })
+            });
 
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+
+            const aiText = data.candidates[0].content.parts[0].text;
             chat.messages.push({ role: 'ai', text: aiText });
             saveAndRender();
-            loadChat(currentChatId);
+            renderCurrentMessages();
+
         } catch (e) {
-            console.error(e);
-            // Wyświetlamy konkretny błąd w oknie czatu
-            chat.messages.push({ role: 'ai', text: "Błąd połączenia z API. Spróbuj odświeżyć stronę za chwilę." });
-            loadChat(currentChatId);
+            console.error("Błąd StrawAI:", e);
+            chat.messages.push({ role: 'ai', text: "Błąd: " + e.message });
+            renderCurrentMessages();
         }
     }
 
-    // Pozostałe funkcje (createNewChat, loadChat, renderChatList, saveAndRender) zostają takie same jak wcześniej...
-    // Pamiętaj, żeby upewnić się, że są one wewnątrz tego tagu <script>
+    // Funkcja tworzenia nowego czatu
+    window.createNewChat = () => {
+        const id = Date.now();
+        const newChat = { id, title: "Nowa rozmowa", messages: [] };
+        chats.unshift(newChat);
+        currentChatId = id;
+        saveAndRender();
+        document.getElementById('chat-window').innerHTML = '';
+    };
+
+    // Funkcja ładowania czatu z bocznego paska
+    window.loadChat = (id) => {
+        currentChatId = id;
+        renderCurrentMessages();
+        renderChatList();
+    };
+
+    function renderCurrentMessages() {
+        const chat = chats.find(c => c.id === currentChatId);
+        const windowDiv = document.getElementById('chat-window');
+        if (chat && windowDiv) {
+            windowDiv.innerHTML = chat.messages.map(m => `
+                <div class="msg ${m.role === 'user' ? 'user' : 'ai'}">${m.text}</div>
+            `).join('');
+            windowDiv.scrollTop = windowDiv.scrollHeight;
+        }
+    }
+
+    function renderChatList() {
+        const list = document.getElementById('chat-list');
+        if (!list) return;
+        list.innerHTML = '';
+        chats.forEach(chat => {
+            const item = document.createElement('div');
+            item.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
+            item.innerText = chat.title;
+            item.onclick = () => window.loadChat(chat.id);
+            list.appendChild(item);
+        });
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('straw_chats', JSON.stringify(chats));
+        renderChatList();
+    }
+
+    // Rejestracja funkcji w systemie
+    window.sendMessage = sendMessage;
+
+    // Inicjalizacja przy starcie
+    if (chats.length > 0) {
+        currentChatId = chats[0].id;
+        renderCurrentMessages();
+        renderChatList();
+    } else {
+        renderChatList();
+    }
 </script>
