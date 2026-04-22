@@ -4,22 +4,25 @@
     let chats = JSON.parse(localStorage.getItem('straw_chats')) || [];
     let currentChatId = null;
 
-    async function sendMessage() {
+    // Funkcja wysyłania - zrobiona jako globalna
+    window.sendMessage = async function() {
         const input = document.getElementById('userInput');
         const text = input.value.trim();
         if (!text) return;
         
-        if (!currentChatId) createNewChat();
+        if (!currentChatId) {
+            window.createNewChat();
+        }
 
         const chat = chats.find(c => c.id === currentChatId);
-        if (chat.messages.length === 0) chat.title = text.substring(0, 20) + "...";
+        if (chat && chat.messages.length === 0) chat.title = text.substring(0, 20) + "...";
 
         chat.messages.push({ role: 'user', text });
         input.value = '';
         renderCurrentMessages();
 
-        // ZMIANA: Wersja v1 (stabilna) zamiast v1beta
-        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+        // Wersja v1 (stabilna) z modelem flash-latest
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
 
         try {
             const response = await fetch(url, {
@@ -27,7 +30,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        parts: [{ text: "Jesteś StrawAI, ekspertem Linux CachyOS. Odpowiadaj po polsku: " + text }]
+                        parts: [{ text: "Jesteś StrawAI, AI do codziennego użytku Odpowiadaj po polsku: " + text }]
                     }]
                 })
             });
@@ -45,7 +48,6 @@
 
         } catch (e) {
             console.error("Błąd:", e);
-            // Wyświetla tacie konkretny błąd, żebyśmy wiedzieli co poprawić
             chat.messages.push({ role: 'ai', text: "Błąd: " + e.message });
             renderCurrentMessages();
         }
@@ -95,8 +97,7 @@
         renderChatList();
     }
 
-    window.sendMessage = sendMessage;
-
+    // Inicjalizacja przy starcie
     if (chats.length > 0) {
         currentChatId = chats[0].id;
         renderCurrentMessages();
