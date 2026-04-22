@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StrawAI Studio</title>
+    <style>
+        :root {
+            --bg: #0b0e14;
+            --sidebar: #151921;
+            --accent: #00d7ff;
+            --text: #e2e8f0;
+            --hover: #2d3748;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+        }
+
+        /* BOCZNY PASEK */
+        #sidebar {
+            width: 260px;
+            background: var(--sidebar);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #334155;
+            padding: 15px;
+        }
+
+        .new-chat-btn {
+            border: 1px solid #475569;
+            background: transparent;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: 0.3s;
+            font-weight: bold;
+        }
+
+        .new-chat-btn:hover { background: var(--hover); border-color: var(--accent); }
+
+        #chat-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .chat-item {
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-item:hover { background: var(--hover); }
+        .chat-item.active { background: #1e293b; border-left: 3px solid var(--accent); }
+
+        /* GŁÓWNY PANEL */
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg);
+        }
+
+        header {
+            padding: 15px 25px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #chat-window {
+            flex: 1;
+            overflow-y: auto;
+            padding: 40px 15%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .msg { max-width: 85%; padding: 15px; border-radius: 12px; line-height: 1.6; }
+        .user { align-self: flex-end; background: #2d3748; }
+        .ai { align-self: flex-start; background: transparent; border-left: 2px solid var(--accent); }
+
+        /* WPISYWANIE */
+        #input-container {
+            padding: 30px 15%;
+            background: linear-gradient(transparent, var(--bg) 20%);
+        }
+
+        .input-box {
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 15px;
+            display: flex;
+            padding: 10px 15px;
+        }
+
+        input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 10px;
+            outline: none;
+            font-size: 1rem;
+        }
+
+        button#send-btn {
+            background: var(--accent);
+            border: none;
+            border-radius: 10px;
+            padding: 0 15px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <button class="new-chat-btn" onclick="createNewChat()">+ Nowy czat</button>
+    <div id="chat-list"></div>
+</div>
+
+<div id="main">
+    <header>
+        <div style="color: var(--accent); font-weight: bold;">StrawAI // CachyOS</div>
+    </header>
+    
+    <div id="chat-window"></div>
+
+    <div id="input-container">
+        <div class="input-box">
+            <input type="text" id="userInput" placeholder="Zapytaj o cokolwiek..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button id="send-btn" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+    const API_KEY = "AIzaSyD76646cAznUiVYjN-Mt-RGXDZaji4Lv_4"; 
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        systemInstruction: "Nazywasz się StrawAI. Pomagasz w codziennych czynnościach"
+    });
+
+    let chats = JSON.parse(localStorage.getItem('straw_chats')) || [];
+    let currentChatId = null;
+
+    function renderChatList() {
+        const list = document.getElementById('chat-list');
+        list.innerHTML = '';
+        chats.forEach(chat => {
+            const item = document.createElement('div');
+            item.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
+            item.innerText = chat.title;
+            item.onclick = () => loadChat(chat.id);
+            list.appendChild(item);
+        });
+    }
+
+    window.createNewChat = () => {
+        const id = Date.now();
+        const newChat = { id, title: "Nowa rozmowa", messages: [] };
+        chats.unshift(newChat);
+        currentChatId = id;
+        saveAndRender();
+        document.getElementById('chat-window').innerHTML = '';
+    };
+
+    function loadChat(id) {
+        currentChatId = id;
+        const chat = chats.find(c => c.id === id);
+        const window = document.getElementById('chat-window');
+        window.innerHTML = chat.messages.map(m => `
+            <div class="msg ${m.role}">${m.text}</div>
+        `).join('');
+        renderChatList();
+        window.scrollTop = window.scrollHeight;
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('userInput');
+        const text = input.value.trim();
+        if (!text) return;
+        if (!currentChatId) createNewChat();
+
+        const chat = chats.find(c => c.id === currentChatId);
+        if (chat.messages.length === 0) chat.title = text.substring(0, 25) + "...";
+
+        chat.messages.push({ role: 'user', text });
+        input.value = '';
+        loadChat(currentChatId);
+
+        try {
+            const result = await model.generateContent(text);
+            chat.messages.push({ role: 'ai', text: result.response.text() });
+            saveAndRender();
+            loadChat(currentChatId);
+        } catch (e) {
+            alert("Błąd API!");
+        }
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('straw_chats', JSON.stringify(chats));
+        renderChatList();
+    }
+
+    // Inicjalizacja
+    if (chats.length > 0) loadChat(chats[0].id);
+    else renderChatList();
+
+    window.sendMessage = sendMessage;
+</script>
+
+</body>
+</html>
